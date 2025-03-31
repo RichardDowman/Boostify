@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator
+} from 'react-native';
 import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DollarSign, TrendingUp, Music2, Heart } from 'lucide-react-native';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function EarningsScreen() {
   const [fontsLoaded] = useFonts({
@@ -18,7 +27,7 @@ export default function EarningsScreen() {
       directTips: 15,
       totalTips: 50,
       boostifyFee: 10,
-      netEarnings: 40
+      netEarnings: 40,
     },
     history: [
       {
@@ -28,7 +37,7 @@ export default function EarningsScreen() {
         songTips: 145,
         directTips: 55,
         totalTips: 200,
-        netEarnings: 160
+        netEarnings: 160,
       },
       {
         id: 2,
@@ -37,19 +46,48 @@ export default function EarningsScreen() {
         songTips: 120,
         directTips: 40,
         totalTips: 160,
-        netEarnings: 128
-      }
-    ]
+        netEarnings: 128,
+      },
+    ],
   });
 
-  if (!fontsLoaded) {
-    return null;
-  }
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  if (!fontsLoaded) return null;
+
+  // ✅ Updated test payout function
+  const testPayout = async () => {
+    setLoading(true);
+    try {
+      const functions = getFunctions();
+      const sendPayout = httpsCallable(functions, 'sendPayout');
+
+      const payload = {
+        eventId: 'test-event',
+        performerId: 'test-performer-id',
+        performerAccountId: 'acct_test123'
+      };
+
+      console.log('Calling sendPayout with:', payload);
+      const response = await sendPayout(payload);
+      console.log('Response from sendPayout:', response.data);
+      setResult(JSON.stringify(response.data));
+      alert('Payout Success: ' + JSON.stringify(response.data));
+    } catch (error: any) {
+      console.error('Payout Error:', error);
+      alert('Payout Error: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <Image
-        source={{ uri: 'https://images.unsplash.com/photo-1634128222187-18eababc763d?w=800&auto=format&fit=crop' }}
+        source={{
+          uri: 'https://images.unsplash.com/photo-1634128222187-18eababc763d?w=800&auto=format&fit=crop',
+        }}
         style={styles.backgroundImage}
       />
       <LinearGradient
@@ -69,7 +107,7 @@ export default function EarningsScreen() {
                 <Text style={styles.liveIndicatorText}>Live Now</Text>
               </View>
             </View>
-            
+
             <View style={styles.tipsBreakdown}>
               <View style={styles.tipsRow}>
                 <Text style={styles.tipsLabel}>Song Request Tips:</Text>
@@ -126,7 +164,7 @@ export default function EarningsScreen() {
                   </View>
                   <Text style={styles.historyEarnings}>${event.netEarnings}</Text>
                 </View>
-                
+
                 <View style={styles.historyDetails}>
                   <View style={styles.detailItem}>
                     <Music2 size={16} color="#4a9eff" />
@@ -140,6 +178,23 @@ export default function EarningsScreen() {
               </Animated.View>
             ))}
           </View>
+
+          {/* ✅ Test Payout Button */}
+          <View style={styles.testPayoutContainer}>
+            <TouchableOpacity
+              style={styles.testPayoutButton}
+              onPress={testPayout}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.testPayoutText}>Test Payout</Text>
+              )}
+            </TouchableOpacity>
+            {result && <Text style={styles.testPayoutResult}>Result: {result}</Text>}
+          </View>
+
         </Animated.View>
       </ScrollView>
     </View>
@@ -147,19 +202,14 @@ export default function EarningsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a0b2e',
-  },
+  container: { flex: 1, backgroundColor: '#1a0b2e' },
   backgroundImage: {
     position: 'absolute',
     width: '100%',
     height: '100%',
     opacity: 0.3,
   },
-  scrollView: {
-    flex: 1,
-  },
+  scrollView: { flex: 1 },
   content: {
     paddingTop: 60,
     paddingHorizontal: 20,
@@ -186,11 +236,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
-  venueName: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 20,
-    color: '#fff',
-  },
+  venueName: { fontFamily: 'Inter-Bold', fontSize: 20, color: '#fff' },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,20 +291,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  netTipsLabel: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 16,
-    color: '#fff',
-  },
-  netTipsValue: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 20,
-    color: '#10b981',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
+  netTipsLabel: { fontFamily: 'Inter-Bold', fontSize: 16, color: '#fff' },
+  netTipsValue: { fontFamily: 'Inter-Bold', fontSize: 20, color: '#10b981' },
+  statsGrid: { flexDirection: 'row', gap: 10 },
   statCard: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -272,14 +307,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginVertical: 4,
   },
-  statLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#4a9eff',
-  },
-  historySection: {
-    marginTop: 20,
-  },
+  statLabel: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#4a9eff' },
+  historySection: { marginTop: 20 },
   sectionTitle: {
     fontFamily: 'Inter-Bold',
     fontSize: 20,
@@ -298,32 +327,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  venueInfo: {
-    flex: 1,
-  },
-  eventDate: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: '#4a9eff',
-  },
+  venueInfo: { flex: 1 },
+  eventDate: { fontFamily: 'Inter-Regular', fontSize: 14, color: '#4a9eff' },
   historyEarnings: {
     fontFamily: 'Inter-Bold',
     fontSize: 20,
     color: '#10b981',
   },
-  historyDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
+  historyDetails: { flexDirection: 'row', justifyContent: 'space-between' },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: '#fff',
     opacity: 0.8,
+  },
+  testPayoutContainer: {
+    marginTop: 30,
+    alignItems: 'center',
+  },
+  testPayoutButton: {
+    backgroundColor: '#6366f1',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+  },
+  testPayoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: 'Inter-Bold',
+  },
+  testPayoutResult: {
+    marginTop: 15,
+    color: '#fff',
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
