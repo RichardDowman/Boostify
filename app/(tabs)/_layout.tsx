@@ -63,6 +63,10 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <User size={28} color={color} />,
         }}
       />
+
+      {/* 🔒 Hide internal-use-only screens */}
+      <Tabs.Screen name="add-funds" options={{ href: null }} />
+      <Tabs.Screen name="payout" options={{ href: null }} />
     </Tabs>
   );
 }

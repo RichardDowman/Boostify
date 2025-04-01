@@ -17,8 +17,8 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, firestore } from '../../config/firebaseConfig';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { auth, firestore, functions } from '../../config/firebaseConfig';
+import { httpsCallable } from 'firebase/functions';
 import * as WebBrowser from 'expo-web-browser';
 
 export default function RegisterScreen() {
@@ -46,10 +46,8 @@ export default function RegisterScreen() {
     }
 
     try {
-      // Create user with Firebase Auth
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
-      // Create user profile in Firestore
       await setDoc(doc(firestore, 'users', user.uid), {
         name,
         email: user.email,
@@ -58,31 +56,24 @@ export default function RegisterScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // Create wallet document for the user
       await setDoc(doc(firestore, 'wallets', user.uid), {
         userId: user.uid,
         balance: 0,
         createdAt: serverTimestamp(),
       });
 
-      // If this is a performer, initiate Stripe onboarding
       if (isPerformer) {
-        const functions = getFunctions(); // get default Firebase functions instance
         const createStripeAccountLink = httpsCallable(functions, 'createStripeAccountLink');
-
-        // Call the cloud function with the performer's UID
         const result = await createStripeAccountLink({ uid: user.uid });
+
         if (result.data && result.data.link && result.data.accountId) {
-          // Save the returned Stripe account ID in Firestore for this performer
           await updateDoc(doc(firestore, 'users', user.uid), {
             stripeAccountId: result.data.accountId,
           });
-          // Open the Stripe onboarding link in the browser
           await WebBrowser.openBrowserAsync(result.data.link);
         }
       }
 
-      // Navigate to the appropriate screen based on the account type
       router.replace(isPerformer ? '/(performer)/profile' : '/(tabs)/profile');
     } catch (err: any) {
       Alert.alert('Registration Failed', err.message);
@@ -226,4 +217,3 @@ const styles = StyleSheet.create({
   registerButtonDisabled: { opacity: 0.7 },
   registerButtonText: { color: '#fff', fontSize: 16, fontFamily: 'Inter-Bold' },
 });
-
