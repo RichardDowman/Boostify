@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity, Image,
+  Alert, ActivityIndicator, Modal
+} from 'react-native';
 import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, router } from 'expo-router';
-import { Music2, Lock, User } from 'lucide-react-native';
+import { Music2, Lock, User, X } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, firestore } from '../../config/firebaseConfig';
 
@@ -15,6 +18,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isPerformer, setIsPerformer] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const [fontsLoaded] = useFonts({
     'Inter-Regular': Inter_400Regular,
@@ -35,11 +40,10 @@ export default function LoginScreen() {
 
       const { role } = userDoc.data();
 
-      // 🔐 Check or create wallet
       const walletRef = doc(firestore, 'wallets', user.uid);
       const walletSnap = await getDoc(walletRef);
       if (!walletSnap.exists()) {
-        await setDoc(walletRef, { balance: 0 }); // Default wallet balance
+        await setDoc(walletRef, { balance: 0 });
       }
 
       router.replace(role === 'performer' ? '/(performer)/' : '/(tabs)/');
@@ -47,6 +51,18 @@ export default function LoginScreen() {
       Alert.alert('Login Failed', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) return;
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail.trim());
+      Alert.alert('Email Sent', 'Check your inbox for reset instructions.');
+      setForgotEmail('');
+      setForgotVisible(false);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
     }
   };
 
@@ -99,6 +115,10 @@ export default function LoginScreen() {
             />
           </View>
 
+          <TouchableOpacity style={styles.forgotLink} onPress={() => setForgotVisible(true)}>
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : <>
               <Lock color="#fff" size={20}/>
@@ -118,6 +138,30 @@ export default function LoginScreen() {
           </Link>
         </View>
       </Animated.View>
+
+      {/* Forgot Password Modal */}
+      <Modal visible={forgotVisible} animationType="slide" transparent onRequestClose={() => setForgotVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity style={styles.closeButton} onPress={() => setForgotVisible(false)}>
+              <X color="#fff" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter your email"
+              placeholderTextColor="#aaa"
+              value={forgotEmail}
+              onChangeText={setForgotEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.sendButton} onPress={handleForgotPassword}>
+              <Text style={styles.sendButtonText}>Send Reset Email</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -137,8 +181,18 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: '#fff' },
   inputContainer: { marginBottom: 15 },
   input: { backgroundColor: '#fff', borderRadius: 12, padding: 15, fontSize: 16, fontFamily: 'Inter-Regular' },
+  forgotLink: { alignItems: 'flex-end', marginBottom: 10 },
+  forgotText: { color: '#4a9eff', fontSize: 14, fontFamily: 'Inter-Regular' },
   loginButton: { backgroundColor: '#6366f1', borderRadius: 12, padding: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10 },
   loginButtonText: { color: '#fff', fontSize: 16, fontFamily: 'Inter-Bold' },
   registerButton: { marginTop: 20, alignItems: 'center' },
   registerButtonText: { color: '#4a9eff', fontSize: 14, fontFamily: 'Inter-Regular' },
+
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
+  modalContent: { backgroundColor: '#1a0b2e', padding: 20, borderRadius: 20, width: '90%' },
+  modalTitle: { fontSize: 20, fontFamily: 'Inter-Bold', color: '#fff', marginBottom: 15, textAlign: 'center' },
+  modalInput: { backgroundColor: '#fff', borderRadius: 12, padding: 15, fontSize: 16, fontFamily: 'Inter-Regular', marginBottom: 15 },
+  sendButton: { backgroundColor: '#6366f1', borderRadius: 12, padding: 15, alignItems: 'center' },
+  sendButtonText: { fontFamily: 'Inter-Bold', color: '#fff', fontSize: 16 },
+  closeButton: { position: 'absolute', top: 10, right: 10 },
 });

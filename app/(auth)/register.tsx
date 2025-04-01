@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  ScrollView,
+  Alert
+} from 'react-native';
 import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -7,8 +16,10 @@ import { Music2, User, ArrowLeft } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, firestore } from '../../config/firebaseConfig';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import * as WebBrowser from 'expo-web-browser';
 
 export default function RegisterScreen() {
   const params = useLocalSearchParams();
@@ -35,9 +46,10 @@ export default function RegisterScreen() {
     }
 
     try {
+      // Create user with Firebase Auth
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
-      // Create user profile
+      // Create user profile in Firestore
       await setDoc(doc(firestore, 'users', user.uid), {
         name,
         email: user.email,
@@ -46,13 +58,31 @@ export default function RegisterScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // Create wallet document
+      // Create wallet document for the user
       await setDoc(doc(firestore, 'wallets', user.uid), {
         userId: user.uid,
         balance: 0,
         createdAt: serverTimestamp(),
       });
 
+      // If this is a performer, initiate Stripe onboarding
+      if (isPerformer) {
+        const functions = getFunctions(); // get default Firebase functions instance
+        const createStripeAccountLink = httpsCallable(functions, 'createStripeAccountLink');
+
+        // Call the cloud function with the performer's UID
+        const result = await createStripeAccountLink({ uid: user.uid });
+        if (result.data && result.data.link && result.data.accountId) {
+          // Save the returned Stripe account ID in Firestore for this performer
+          await updateDoc(doc(firestore, 'users', user.uid), {
+            stripeAccountId: result.data.accountId,
+          });
+          // Open the Stripe onboarding link in the browser
+          await WebBrowser.openBrowserAsync(result.data.link);
+        }
+      }
+
+      // Navigate to the appropriate screen based on the account type
       router.replace(isPerformer ? '/(performer)/profile' : '/(tabs)/profile');
     } catch (err: any) {
       Alert.alert('Registration Failed', err.message);
@@ -61,56 +91,96 @@ export default function RegisterScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Image source={{ uri: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&auto=format&fit=crop' }} style={styles.backgroundImage}/>
-      <LinearGradient colors={['rgba(26,11,46,0.8)','rgba(26,11,46,0.95)']} style={StyleSheet.absoluteFill}/>
-
+      <Image
+        source={{
+          uri: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&auto=format&fit=crop',
+        }}
+        style={styles.backgroundImage}
+      />
+      <LinearGradient
+        colors={['rgba(26,11,46,0.8)', 'rgba(26,11,46,0.95)']}
+        style={StyleSheet.absoluteFill}
+      />
       <Animated.View entering={FadeIn} style={styles.content}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft color="#fff" size={24}/>
+          <ArrowLeft color="#fff" size={24} />
         </TouchableOpacity>
-
         <View style={styles.header}>
-          <Music2 color="#fff" size={48}/>
+          <Music2 color="#fff" size={48} />
           <Text style={styles.title}>Create Account</Text>
         </View>
-
         <View style={styles.form}>
           {!params.type && (
             <View style={styles.toggleContainer}>
-              <TouchableOpacity style={[styles.toggleButton, !isPerformer && styles.toggleButtonActive]} onPress={() => setIsPerformer(false)}>
-                <User color={!isPerformer ? '#fff' : '#666'} size={20}/>
+              <TouchableOpacity
+                style={[styles.toggleButton, !isPerformer && styles.toggleButtonActive]}
+                onPress={() => setIsPerformer(false)}>
+                <User color={!isPerformer ? '#fff' : '#666'} size={20} />
                 <Text style={[styles.toggleText, !isPerformer && styles.toggleTextActive]}>User</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.toggleButton, isPerformer && styles.toggleButtonActive]} onPress={() => setIsPerformer(true)}>
-                <Music2 color={isPerformer ? '#fff' : '#666'} size={20}/>
+              <TouchableOpacity
+                style={[styles.toggleButton, isPerformer && styles.toggleButtonActive]}
+                onPress={() => setIsPerformer(true)}>
+                <Music2 color={isPerformer ? '#fff' : '#666'} size={20} />
                 <Text style={[styles.toggleText, isPerformer && styles.toggleTextActive]}>Performer</Text>
               </TouchableOpacity>
             </View>
           )}
-
           {params.type === 'performer' && (
             <View style={styles.accountTypeIndicator}>
-              <Music2 color="#fff" size={20}/>
+              <Music2 color="#fff" size={20} />
               <Text style={styles.accountTypeText}>Performer Account</Text>
             </View>
           )}
-
           <View style={styles.inputContainer}>
-            <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor="#666" value={name} onChangeText={setName}/>
+            <TextInput
+              style={styles.input}
+              placeholder="Full Name"
+              placeholderTextColor="#666"
+              value={name}
+              onChangeText={setName}
+            />
           </View>
           <View style={styles.inputContainer}>
-            <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#666" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none"/>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#666"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
           </View>
           <View style={styles.inputContainer}>
-            <TextInput style={styles.input} placeholder="Password" placeholderTextColor="#666" value={password} onChangeText={setPassword} secureTextEntry/>
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#666"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
           </View>
           {(isPerformer || params.type === 'performer') && (
             <View style={styles.inputContainer}>
-              <TextInput style={[styles.input, styles.textArea]} placeholder="Bio" placeholderTextColor="#666" value={bio} onChangeText={setBio} multiline numberOfLines={3}/>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Bio"
+                placeholderTextColor="#666"
+                value={bio}
+                onChangeText={setBio}
+                multiline
+                numberOfLines={3}
+              />
             </View>
           )}
-
-          <TouchableOpacity style={[styles.registerButton, (!name||!email||!password)&&styles.registerButtonDisabled]} onPress={handleRegister}>
+          <TouchableOpacity
+            style={[
+              styles.registerButton,
+              (!name || !email || !password) && styles.registerButtonDisabled
+            ]}
+            onPress={handleRegister}>
             <Text style={styles.registerButtonText}>Create Account</Text>
           </TouchableOpacity>
         </View>
@@ -125,9 +195,24 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: 60, minHeight: '100%' },
   backButton: { position: 'absolute', top: 60, left: 20, zIndex: 10 },
   header: { alignItems: 'center', marginBottom: 40, marginTop: 40 },
-  title: { fontFamily: 'Inter-Bold', fontSize: 32, color: '#fff', marginTop: 20, textShadowColor: 'rgba(74, 158, 255, 0.8)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 20 },
-  form: { backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 20, padding: 20, width: '100%', maxWidth: 400, alignSelf: 'center' },
-  toggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0, 0, 0, 0.2)', borderRadius: 12, padding: 4, marginBottom: 20 },
+  title: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 32,
+    color: '#fff',
+    marginTop: 20,
+    textShadowColor: 'rgba(74,158,255,0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
+  },
+  form: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  toggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 4, marginBottom: 20 },
   toggleButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, gap: 8, borderRadius: 8 },
   toggleButtonActive: { backgroundColor: '#6366f1' },
   toggleText: { fontFamily: 'Inter-Bold', fontSize: 14, color: '#666' },
@@ -141,3 +226,4 @@ const styles = StyleSheet.create({
   registerButtonDisabled: { opacity: 0.7 },
   registerButtonText: { color: '#fff', fontSize: 16, fontFamily: 'Inter-Bold' },
 });
+

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Platform, Image, Alert } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Settings, LogOut, Music2, Star, Clock, X, Lock, Camera } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
+import { signOut } from 'firebase/auth';
+import { auth } from '../../config/firebaseConfig';
 
 const getInitials = (name: string) => {
   return name
@@ -51,12 +53,15 @@ export default function UserProfileScreen() {
     'Inter-Bold': Inter_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return null;
-  }
+  if (!fontsLoaded) return null;
 
-  const handleLogout = () => {
-    router.replace('/(auth)/login');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.replace('/(auth)/login');
+    } catch (error: any) {
+      Alert.alert('Logout Failed', error.message);
+    }
   };
 
   const handleSaveProfile = () => {
@@ -75,7 +80,6 @@ export default function UserProfileScreen() {
 
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    
     if (status !== 'granted') {
       alert('Sorry, we need camera permissions to make this work!');
       return;
@@ -103,19 +107,10 @@ export default function UserProfileScreen() {
 
   const renderAvatar = () => {
     if (profile.imageUri) {
-      return (
-        <Image
-          source={{ uri: profile.imageUri }}
-          style={styles.avatarImage}
-        />
-      );
+      return <Image source={{ uri: profile.imageUri }} style={styles.avatarImage} />;
     }
-
     return (
-      <LinearGradient
-        colors={[gradientStart, gradientEnd]}
-        style={styles.avatarContainer}
-      >
+      <LinearGradient colors={[gradientStart, gradientEnd]} style={styles.avatarContainer}>
         <Text style={styles.initials}>{initials}</Text>
       </LinearGradient>
     );
@@ -123,17 +118,11 @@ export default function UserProfileScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <LinearGradient
-        colors={['rgba(26, 11, 46, 0.8)', 'rgba(26, 11, 46, 0.95)']}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={['rgba(26, 11, 46, 0.8)', 'rgba(26, 11, 46, 0.95)']} style={StyleSheet.absoluteFill} />
 
       <Animated.View entering={FadeIn} style={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.avatarWrapper}
-            onPress={handleTakePhoto}
-          >
+          <TouchableOpacity style={styles.avatarWrapper} onPress={handleTakePhoto}>
             {renderAvatar()}
             <View style={styles.cameraButton}>
               <Camera color="#fff" size={16} />
@@ -141,23 +130,17 @@ export default function UserProfileScreen() {
           </TouchableOpacity>
           <Text style={styles.name}>{profile.name}</Text>
           <Text style={styles.email}>{profile.email}</Text>
-          
+
           <View style={styles.buttonGroup}>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => {
-                setEditedProfile({ ...profile });
-                setIsEditModalVisible(true);
-              }}
-            >
+            <TouchableOpacity style={styles.editButton} onPress={() => {
+              setEditedProfile({ ...profile });
+              setIsEditModalVisible(true);
+            }}>
               <Settings color="#fff" size={20} />
               <Text style={styles.editButtonText}>Edit Profile</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.passwordButton}
-              onPress={() => setIsPasswordModalVisible(true)}
-            >
+            <TouchableOpacity style={styles.passwordButton} onPress={() => setIsPasswordModalVisible(true)}>
               <Lock color="#fff" size={20} />
               <Text style={styles.editButtonText}>Change Password</Text>
             </TouchableOpacity>
@@ -174,147 +157,10 @@ export default function UserProfileScreen() {
           ))}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <View style={styles.activityCard}>
-            <View style={styles.activityHeader}>
-              <Text style={styles.activityTitle}>Boosted "Sweet Child O' Mine"</Text>
-              <Text style={styles.activityDate}>2 hours ago</Text>
-            </View>
-            <Text style={styles.activityVenue}>at The Blue Note</Text>
-          </View>
-          
-          <View style={styles.activityCard}>
-            <View style={styles.activityHeader}>
-              <Text style={styles.activityTitle}>Requested "Hotel California"</Text>
-              <Text style={styles.activityDate}>Yesterday</Text>
-            </View>
-            <Text style={styles.activityVenue}>at Jazz Corner</Text>
-          </View>
-        </View>
-
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <LogOut color="#fff" size={20} />
           <Text style={styles.logoutButtonText}>Sign Out</Text>
         </TouchableOpacity>
-
-        {/* Edit Profile Modal */}
-        <Modal
-          visible={isEditModalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsEditModalVisible(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Edit Profile</Text>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setIsEditModalVisible(false)}
-                >
-                  <X color="#fff" size={24} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editedProfile.name}
-                  onChangeText={(text) => setEditedProfile(prev => ({ ...prev, name: text }))}
-                  placeholder="Your name"
-                  placeholderTextColor="#666"
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editedProfile.email}
-                  onChangeText={(text) => setEditedProfile(prev => ({ ...prev, email: text }))}
-                  placeholder="Your email"
-                  placeholderTextColor="#666"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSaveProfile}
-              >
-                <Text style={styles.saveButtonText}>Save Changes</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Change Password Modal */}
-        <Modal
-          visible={isPasswordModalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsPasswordModalVisible(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Change Password</Text>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setIsPasswordModalVisible(false)}
-                >
-                  <X color="#fff" size={24} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Current Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={passwordForm.currentPassword}
-                  onChangeText={(text) => setPasswordForm(prev => ({ ...prev, currentPassword: text }))}
-                  placeholder="Enter current password"
-                  placeholderTextColor="#666"
-                  secureTextEntry
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>New Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={passwordForm.newPassword}
-                  onChangeText={(text) => setPasswordForm(prev => ({ ...prev, newPassword: text }))}
-                  placeholder="Enter new password"
-                  placeholderTextColor="#666"
-                  secureTextEntry
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Confirm New Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={passwordForm.confirmPassword}
-                  onChangeText={(text) => setPasswordForm(prev => ({ ...prev, confirmPassword: text }))}
-                  placeholder="Confirm new password"
-                  placeholderTextColor="#666"
-                  secureTextEntry
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleChangePassword}
-              >
-                <Text style={styles.saveButtonText}>Update Password</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </Animated.View>
     </ScrollView>
   );
