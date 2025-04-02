@@ -1,7 +1,7 @@
-// functions/index.js
-const { onCall } = require("firebase-functions/v2/https");
+const { onCall, onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const stripe = require("stripe")("sk_test_51R2PGSE0e3X64HIoV28FEIzKBqtraHU3efPQLQpAWCzHi3lk45wDZqJPI8xzuQ9dGnqBu1QeIxXcpFiiFe4puOsX00m1MUzVVD");
+const express = require("express");
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -100,8 +100,8 @@ exports.createStripeAccountLink = onCall(
 
       const accountLink = await stripe.accountLinks.create({
         account: account.id,
-        refresh_url: "https://your-app-url.com/reauth",
-        return_url: "https://your-app-url.com/complete",
+        refresh_url: "https://your-app-url.com/reauth", // Update with your app's refresh URL
+        return_url: "https://your-app-url.com/complete", // Update with your app's return URL
         type: "account_onboarding",
       });
 
@@ -114,7 +114,7 @@ exports.createStripeAccountLink = onCall(
 );
 
 // =====================
-// ✅ UPDATED createCheckoutSession function
+// createCheckoutSession function
 // =====================
 exports.createCheckoutSession = onCall(
   {
@@ -151,22 +151,57 @@ exports.createCheckoutSession = onCall(
         mode: "payment",
         success_url: "https://boostify-b0f94.firebaseapp.com/success",
         cancel_url: "https://boostify-b0f94.firebaseapp.com/cancel",
-        metadata: {
-          userId,
-        },
+        metadata: { userId },
       });
 
-      // ✅ Return full URL instead of just sessionId
-      return {
-        sessionId: session.id,
-        url: session.url,
-      };
+      // Return full URL for redirection
+      return { sessionId: session.id, url: session.url };
     } catch (error) {
       console.error("createCheckoutSession error:", error.message);
       throw new Error(error.message);
     }
   }
 );
+
+// =====================
+// Stripe Webhook handler function
+// =====================
+
+// Create an Express app to handle the raw body needed for webhook signature verification.
+const app = express();
+
+// Use express.raw middleware for requests with content type 'application/json'
+app.post("/handleStripeWebhook", express.raw({ type: "application/json" }), (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const webhookSecret = "we_1R9YFNE0e3X64HIoRfI0Fw0A"; // Replace with your actual webhook secret (or use process.env)
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case "checkout.session.completed":
+      const session = event.data.object;
+      console.log("Checkout Session completed:", session);
+      // Optionally, update your Firestore or perform other actions here.
+      break;
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({ received: true });
+});
+
+exports.handleStripeWebhook = onRequest(app);
+
+
+
+
 
 
 

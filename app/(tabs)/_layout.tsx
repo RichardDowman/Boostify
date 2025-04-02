@@ -67,6 +67,8 @@ export default function TabLayout() {
       {/* 🔒 Hide internal-use-only screens */}
       <Tabs.Screen name="add-funds" options={{ href: null }} />
       <Tabs.Screen name="payout" options={{ href: null }} />
+	  <Tabs.Screen name="success" options={{ href: null }} />
+      <Tabs.Screen name="cancel" options={{ href: null }} />
     </Tabs>
   );
 }
