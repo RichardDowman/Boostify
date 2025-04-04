@@ -1,11 +1,12 @@
 const { onCall, onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const stripe = require("stripe")("sk_test_51R2PGSE0e3X64HIoV28FEIzKBqtraHU3efPQLQpAWCzHi3lk45wDZqJPI8xzuQ9dGnqBu1QeIxXcpFiiFe4puOsX00m1MUzVVD");
-const express = require("express");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+
+const firestore = admin.firestore();
 
 // =====================
 // sendPayout function
@@ -13,22 +14,16 @@ if (!admin.apps.length) {
 exports.sendPayout = onCall(
   {
     region: "us-central1",
-    runtimeOptions: {
-      memory: "256MiB",
-      timeoutSeconds: 60,
-    },
+    runtimeOptions: { memory: "256MiB", timeoutSeconds: 60 },
     serviceAccount: "boostify-b0f94@appspot.gserviceaccount.com",
   },
   async (request) => {
     try {
       const { eventId, performerId } = request.data;
-
       if (!eventId || !performerId) {
         throw new Error("Missing required parameters (eventId, performerId)");
       }
-
-      const performerRef = admin
-        .firestore()
+      const performerRef = firestore
         .collection("events")
         .doc(eventId)
         .collection("performers")
@@ -42,30 +37,25 @@ exports.sendPayout = onCall(
       const performerData = performerDoc.data();
       const totalTips = performerData.totalTips || 0;
       const performerAccountId = performerData.stripeAccountId;
-
       if (!performerAccountId) {
         throw new Error("Performer Stripe account ID missing");
       }
-
       if (totalTips <= 0) {
         throw new Error("No funds available for payout");
       }
 
-      const payoutAmount = Math.round(totalTips * 0.75 * 100); // cents
-      const currency = "usd";
-
-      const transfer = await stripe.transfers.create({
+      const payoutAmount = Math.round(totalTips * 0.75 * 100);
+      await stripe.transfers.create({
         amount: payoutAmount,
-        currency,
+        currency: "usd",
         destination: performerAccountId,
         metadata: { eventId, performerId, totalTips: totalTips.toFixed(2) },
       });
-
-      console.log("Transfer successful:", transfer.id);
-      return { success: true, transferId: transfer.id };
+      console.log("Transfer successful");
+      return { success: true };
     } catch (error) {
       console.error("Payout failed:", error.message);
-      return { success: false, error: error.message || "Unknown error" };
+      return { success: false, error: error.message };
     }
   }
 );
@@ -76,10 +66,7 @@ exports.sendPayout = onCall(
 exports.createStripeAccountLink = onCall(
   {
     region: "us-central1",
-    runtimeOptions: {
-      memory: "256MiB",
-      timeoutSeconds: 60,
-    },
+    runtimeOptions: { memory: "256MiB", timeoutSeconds: 60 },
     serviceAccount: "boostify-b0f94@appspot.gserviceaccount.com",
   },
   async (request) => {
@@ -87,27 +74,22 @@ exports.createStripeAccountLink = onCall(
     if (!uid) {
       throw new Error("Missing required parameter: uid");
     }
-
     try {
       const account = await stripe.accounts.create({
         type: "custom",
         country: "US",
         business_type: "individual",
-        capabilities: {
-          transfers: { requested: true },
-        },
+        capabilities: { transfers: { requested: true } },
       });
-
       const accountLink = await stripe.accountLinks.create({
         account: account.id,
-        refresh_url: "https://your-app-url.com/reauth", // Update with your app's refresh URL
-        return_url: "https://your-app-url.com/complete", // Update with your app's return URL
+        refresh_url: "https://your-app-url.com/reauth",
+        return_url: "https://your-app-url.com/complete",
         type: "account_onboarding",
       });
-
       return { link: accountLink.url, accountId: account.id };
     } catch (error) {
-      console.error("Stripe onboarding error:", error);
+      console.error("Stripe onboarding error:", error.message);
       throw new Error(error.message);
     }
   }
@@ -119,17 +101,13 @@ exports.createStripeAccountLink = onCall(
 exports.createCheckoutSession = onCall(
   {
     region: "us-central1",
-    runtimeOptions: {
-      memory: "256MiB",
-      timeoutSeconds: 60,
-    },
+    runtimeOptions: { memory: "256MiB", timeoutSeconds: 60 },
     serviceAccount: "boostify-b0f94@appspot.gserviceaccount.com",
   },
   async (request) => {
     try {
       const { amount } = request.data;
       const userId = request.auth?.uid;
-
       if (!userId || !amount) {
         throw new Error("Missing required parameters");
       }
@@ -140,9 +118,7 @@ exports.createCheckoutSession = onCall(
           {
             price_data: {
               currency: "usd",
-              product_data: {
-                name: "Boostify Token Top-Up",
-              },
+              product_data: { name: "Boostify Token Top-Up" },
               unit_amount: amount * 100,
             },
             quantity: 1,
@@ -153,8 +129,6 @@ exports.createCheckoutSession = onCall(
         cancel_url: "https://boostify-b0f94.firebaseapp.com/cancel",
         metadata: { userId },
       });
-
-      // Return full URL for redirection
       return { sessionId: session.id, url: session.url };
     } catch (error) {
       console.error("createCheckoutSession error:", error.message);
@@ -164,40 +138,109 @@ exports.createCheckoutSession = onCall(
 );
 
 // =====================
-// Stripe Webhook handler function
+// verifyCheckoutSession function
 // =====================
+exports.verifyCheckoutSession = onCall(
+  {
+    region: "us-central1",
+    runtimeOptions: { memory: "256MiB", timeoutSeconds: 60 },
+    serviceAccount: "boostify-b0f94@appspot.gserviceaccount.com",
+  },
+  async (request) => {
+    const { sessionId } = request.data;
+    const userId = request.auth?.uid;
+    if (!sessionId || !userId) {
+      throw new Error("Missing sessionId or unauthenticated user");
+    }
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status !== "paid") {
+        return { success: false };
+      }
+      const amount = session.amount_total / 100;
 
-// Create an Express app to handle the raw body needed for webhook signature verification.
-const app = express();
+      const userRef = firestore.collection("wallets").doc(userId);
+      await firestore.runTransaction(async (t) => {
+        const docSnap = await t.get(userRef);
+        const currentBalance = docSnap.exists ? docSnap.data().balance || 0 : 0;
+        t.set(userRef, { balance: currentBalance + amount }, { merge: true });
+      });
 
-// Use express.raw middleware for requests with content type 'application/json'
-app.post("/handleStripeWebhook", express.raw({ type: "application/json" }), (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  const webhookSecret = "we_1R9YFNE0e3X64HIoRfI0Fw0A"; // Replace with your actual webhook secret (or use process.env)
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-  } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+      return { success: true, newBalance: amount };
+    } catch (err) {
+      console.error("verifyCheckoutSession error:", err.message);
+      throw new Error("Failed to verify session");
+    }
   }
+);
 
-  // Handle the event
-  switch (event.type) {
-    case "checkout.session.completed":
+// =====================
+// Stripe Webhook function using req.rawBody
+// with your new secret: whsec_sTli6uSC3HLIdGcgEAEsiY3jlubKgOFS
+// =====================
+exports.handleStripeWebhook = onRequest(
+  { region: "us-central1", serviceAccount: "boostify-b0f94@appspot.gserviceaccount.com" },
+  (req, res) => {
+    console.log("🔔 Stripe webhook endpoint hit");
+
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = "whsec_sTli6uSC3HLIdGcgEAEsiY3jlubKgOFS"; // <-- Updated
+
+    if (!sig) {
+      console.error("❌ No stripe-signature header found");
+      return res.status(400).send("No signature header");
+    }
+
+    let event;
+    try {
+      // Use req.rawBody as provided by Firebase for signature verification
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+      console.log(`📦 Event type: ${event.type}`);
+      console.log("🧾 Full event received:", JSON.stringify(event, null, 2));
+    } catch (err) {
+      console.error("❌ Signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      console.log("Checkout Session completed:", session);
-      // Optionally, update your Firestore or perform other actions here.
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
+      const userId = session.metadata?.userId;
+      const amount = session.amount_total / 100;
+      console.log(`✅ Payment complete: userId=${userId}, amount=$${amount}`);
+
+      if (!userId) {
+        console.warn("⚠️ No userId in session metadata");
+        return res.status(400).send("Missing userId");
+      }
+
+      // Update Firestore wallet
+      const walletRef = firestore.collection("wallets").doc(userId);
+      walletRef
+        .set({ balance: admin.firestore.FieldValue.increment(amount) }, { merge: true })
+        .then(() => {
+          console.log(`💰 Wallet updated for ${userId} by $${amount}`);
+          return res.status(200).send("Webhook processed");
+        })
+        .catch((err) => {
+          console.error("❌ Error updating wallet:", err.message);
+          return res.status(500).send("Failed to update wallet");
+        });
+    } else {
+      console.log(`ℹ️ Unhandled event type: ${event.type}`);
+      return res.status(200).send("Unhandled event type");
+    }
   }
+);
 
-  res.json({ received: true });
-});
 
-exports.handleStripeWebhook = onRequest(app);
+
+
+
+
+
+
+
+
 
 
 

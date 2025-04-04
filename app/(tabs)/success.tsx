@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { auth, firestore } from '../config/firebaseConfig';
+import { auth, firestore } from '../../config/firebaseConfig'; // ✅ fixed path
 import { doc, updateDoc, increment } from 'firebase/firestore';
 
 export default function SuccessScreen() {
@@ -58,3 +58,4 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
+
