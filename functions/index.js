@@ -1,3 +1,7 @@
+// Optional: Ensure Firebase doesn't auto-parse the body so that req.rawBody is available.
+// Uncomment the next line if you experience issues with req.rawBody
+// process.env.FIREBASE_FUNCTIONS_BODY_PARSER = "false";
+
 const { onCall, onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const stripe = require("stripe")("sk_test_51R2PGSE0e3X64HIoV28FEIzKBqtraHU3efPQLQpAWCzHi3lk45wDZqJPI8xzuQ9dGnqBu1QeIxXcpFiiFe4puOsX00m1MUzVVD");
@@ -184,7 +188,7 @@ exports.handleStripeWebhook = onRequest(
     console.log("🔔 Stripe webhook endpoint hit");
 
     const sig = req.headers["stripe-signature"];
-    const webhookSecret = "whsec_sTli6uSC3HLIdGcgEAEsiY3jlubKgOFS"; // <-- Updated
+    const webhookSecret = "whsec_sTli6uSC3HLIdGcgEAEsiY3jlubKgOFS"; // <-- Correct secret
 
     if (!sig) {
       console.error("❌ No stripe-signature header found");
@@ -231,6 +235,7 @@ exports.handleStripeWebhook = onRequest(
     }
   }
 );
+
 
 
 

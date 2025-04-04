@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { CreditCard } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { auth, firestore } from '../../config/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { router } from 'expo-router';
 
 export default function WalletScreen() {
@@ -19,21 +19,30 @@ export default function WalletScreen() {
   });
 
   useEffect(() => {
-    const fetchWalletBalance = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const walletRef = doc(firestore, 'wallets', user.uid);
-        const walletSnap = await getDoc(walletRef);
-        if (walletSnap.exists()) {
-          setBalance(walletSnap.data().balance);
-        } else {
-          setBalance(0);
+    const user = auth.currentUser;
+    if (user) {
+      const walletRef = doc(firestore, 'wallets', user.uid);
+      // Set up a real-time listener for the wallet balance
+      const unsubscribe = onSnapshot(
+        walletRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            setBalance(docSnap.data().balance);
+          } else {
+            setBalance(0);
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Error fetching wallet balance:", error);
+          setLoading(false);
         }
-      }
+      );
+      // Clean up the listener when the component unmounts
+      return () => unsubscribe();
+    } else {
       setLoading(false);
-    };
-
-    fetchWalletBalance();
+    }
   }, []);
 
   if (!fontsLoaded) return null;
@@ -115,3 +124,4 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
   },
 });
+
